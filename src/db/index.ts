@@ -16,14 +16,17 @@ export async function migrate(): Promise<void> {
 
 export async function getProfile(chatId: number): Promise<Profile> {
   await pool.query("INSERT INTO profiles(chat_id) VALUES ($1) ON CONFLICT DO NOTHING", [chatId]);
-  const { rows } = await pool.query("SELECT * FROM profiles WHERE chat_id=$1", [chatId]);
+  const { rows } = await pool.query(
+    "SELECT height_cm, to_char(birth_date,'YYYY-MM-DD') AS birth_date, sex, preferences, allergies FROM profiles WHERE chat_id=$1",
+    [chatId],
+  );
   const r = rows[0];
-  return { chatId, heightCm: r.height_cm, age: r.age, sex: r.sex, preferences: r.preferences, allergies: r.allergies };
+  return { chatId, heightCm: r.height_cm, birthDate: r.birth_date, sex: r.sex, preferences: r.preferences, allergies: r.allergies };
 }
 
 export async function updateProfile(chatId: number, patch: Partial<Omit<Profile, "chatId">>): Promise<void> {
   await getProfile(chatId);
-  const cols: Record<string, string> = { heightCm: "height_cm", age: "age", sex: "sex", preferences: "preferences", allergies: "allergies" };
+  const cols: Record<string, string> = { heightCm: "height_cm", birthDate: "birth_date", sex: "sex", preferences: "preferences", allergies: "allergies" };
   for (const [k, v] of Object.entries(patch)) {
     const col = cols[k];
     if (col && v !== undefined) await pool.query(`UPDATE profiles SET ${col}=$2 WHERE chat_id=$1`, [chatId, v]);

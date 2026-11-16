@@ -1,12 +1,17 @@
 CREATE TABLE IF NOT EXISTS profiles (
   chat_id BIGINT PRIMARY KEY,
-  height_cm INTEGER NOT NULL DEFAULT 178,
-  age INTEGER NOT NULL DEFAULT 35,
+  height_cm INTEGER NOT NULL DEFAULT 186,
+  birth_date DATE NOT NULL DEFAULT '1987-02-01',
   sex TEXT NOT NULL DEFAULT 'm',
   preferences TEXT NOT NULL DEFAULT '',
   allergies TEXT NOT NULL DEFAULT '',
   created_at TIMESTAMPTZ DEFAULT now()
 );
+
+-- Для баз, створених попередньою версією схеми
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS birth_date DATE NOT NULL DEFAULT '1987-02-01';
+ALTER TABLE profiles ALTER COLUMN height_cm SET DEFAULT 186;
+ALTER TABLE profiles DROP COLUMN IF EXISTS age;
 
 CREATE TABLE IF NOT EXISTS processed_activities (
   activity_id TEXT PRIMARY KEY,

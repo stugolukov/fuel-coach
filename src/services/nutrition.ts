@@ -1,4 +1,5 @@
 import type { Macros, ManualLog, Profile, RecoveryStatus, Workout, WeightTrend } from "../lib/types.js";
+import { ageOn } from "../lib/dates.js";
 import { weightCorrectionKcal } from "./weight.js";
 
 const r5 = (x: number) => Math.round(x / 5) * 5;
@@ -77,9 +78,10 @@ export function recoveryBreakfast(s: SessionSummary, weightKg: number, recovery:
   return { carbsG, proteinG, fatG, kcal: Math.round(carbsG * 4 + proteinG * 4 + fatG * 9) };
 }
 
-export function bmr(p: Profile, weightKg: number): number {
-  // Mifflin-St Jeor
-  return Math.round(10 * weightKg + 6.25 * p.heightCm - 5 * p.age + (p.sex === "m" ? 5 : -161));
+export function bmr(p: Profile, weightKg: number, onDate: string = new Date().toISOString().slice(0, 10)): number {
+  // Mifflin-St Jeor; вік — на дату розрахунку
+  const age = ageOn(p.birthDate, onDate);
+  return Math.round(10 * weightKg + 6.25 * p.heightCm - 5 * age + (p.sex === "m" ? 5 : -161));
 }
 
 export interface DailyPlan {
@@ -103,8 +105,11 @@ export function dailyPlan(args: {
   trend: WeightTrend;
   logs: ManualLog[];
   breakfast: Macros | null;
+  /** Дата плану YYYY-MM-DD (для віку) */
+  date?: string;
 }): DailyPlan {
   const { profile, weightKg, sessions, recovery, trend, logs } = args;
+  const base = bmr(profile, weightKg, args.date) * 1.35;
   const load = sessions.reduce((a, s) => a + s.load, 0);
   const exKcal = sessions.reduce((a, s) => a + s.kcal, 0);
   const notes: string[] = [];
@@ -113,10 +118,10 @@ export function dailyPlan(args: {
   const proteinPerKg = recovery.level === "poor" ? 1.9 : load >= 150 ? 1.8 : 1.6;
   const correctionKcal = weightCorrectionKcal(trend);
 
-  let kcal = bmr(profile, weightKg) * 1.35 + exKcal + correctionKcal;
+  let kcal = base + exKcal + correctionKcal;
   if (recovery.level === "poor") {
     // при поганому відновленні не тримаємо дефіцит
-    kcal = Math.max(kcal, bmr(profile, weightKg) * 1.35 + exKcal);
+    kcal = Math.max(kcal, base + exKcal);
     notes.push("Відновлення слабке: без дефіциту калорій, більше білка, продукти з омега-3 та антиоксидантами (ягоди, жирна риба, горіхи).");
   }
 

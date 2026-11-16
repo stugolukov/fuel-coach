@@ -81,7 +81,7 @@ async function buildBreakfastMessage(chatId: number, ctx: Context, all: Workout[
   const allSessions = groupSessions(all).map((g) => summarize(g, ctx.weightKg));
   const logs = await db.logsBetween(chatId, addDays(ctx.today, -1), ctx.today);
   const trend = weightTrend(ctx.history);
-  const plan = dailyPlan({ profile, weightKg: ctx.weightKg, sessions: allSessions, recovery: ctx.recovery, trend, logs, breakfast });
+  const plan = dailyPlan({ date: ctx.today, profile, weightKg: ctx.weightKg, sessions: allSessions, recovery: ctx.recovery, trend, logs, breakfast });
   const disliked = await db.dislikedRecipes(chatId);
 
   const recipes = await generateRecipes({
@@ -138,7 +138,7 @@ export async function restDayPlan(chatId: number, now = new Date()): Promise<str
   if (await db.hasRecommendation(chatId, ctx.today, "rest_day")) return null;
   const profile = await db.getProfile(chatId);
   const logs = await db.logsBetween(chatId, addDays(ctx.today, -1), ctx.today);
-  const plan = dailyPlan({ profile, weightKg: ctx.weightKg, sessions: [], recovery: ctx.recovery, trend: weightTrend(ctx.history), logs, breakfast: null });
+  const plan = dailyPlan({ date: ctx.today, profile, weightKg: ctx.weightKg, sessions: [], recovery: ctx.recovery, trend: weightTrend(ctx.history), logs, breakfast: null });
   await db.saveRecommendation(chatId, ctx.today, "rest_day", plan);
   return [`😌 <b>День без тренувань</b>`, "Вуглеводів менше (~3 г/кг), білок рівномірно по 25–35 г на прийом.", fmt.daily(plan)].join("\n\n");
 }
@@ -209,7 +209,7 @@ export async function todayStatus(chatId: number, now = new Date()): Promise<str
   const logs = await db.logsBetween(chatId, addDays(ctx.today, -1), ctx.today);
   const trend = weightTrend(ctx.history);
   const firstBreakfast = sessions[0] ? recoveryBreakfast(sessions[0], ctx.weightKg, ctx.recovery) : null;
-  const plan = dailyPlan({ profile, weightKg: ctx.weightKg, sessions, recovery: ctx.recovery, trend, logs, breakfast: firstBreakfast });
+  const plan = dailyPlan({ date: ctx.today, profile, weightKg: ctx.weightKg, sessions, recovery: ctx.recovery, trend, logs, breakfast: firstBreakfast });
   return [
     fmt.body(ctx.wellnessToday, trend, profile.heightCm),
     fmt.recovery(ctx.recovery),
@@ -227,7 +227,7 @@ export async function mealRecipes(chatId: number, mealName: string, now = new Da
   const sessions = groupSessions(workouts).map((g) => summarize(g, ctx.weightKg));
   const logs = await db.logsBetween(chatId, addDays(ctx.today, -1), ctx.today);
   const breakfast = sessions[0] ? recoveryBreakfast(sessions[0], ctx.weightKg, ctx.recovery) : null;
-  const plan = dailyPlan({ profile, weightKg: ctx.weightKg, sessions, recovery: ctx.recovery, trend: weightTrend(ctx.history), logs, breakfast });
+  const plan = dailyPlan({ date: ctx.today, profile, weightKg: ctx.weightKg, sessions, recovery: ctx.recovery, trend: weightTrend(ctx.history), logs, breakfast });
   const meal = plan.meals.find((m) => m.name.toLowerCase() === mealName.toLowerCase()) ?? plan.meals[0]!;
   const list = await generateRecipes({
     meal: meal.name, macros: meal.macros, count: 3,

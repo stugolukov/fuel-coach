@@ -35,7 +35,8 @@ export interface WellnessDay {
 export interface Profile {
   chatId: number;
   heightCm: number;
-  age: number;
+  /** Дата народження YYYY-MM-DD; вік рахується на поточну дату */
+  birthDate: string;
   sex: "m" | "f";
   preferences: string;
   allergies: string;

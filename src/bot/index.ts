@@ -1,6 +1,6 @@
 import { Bot, InlineKeyboard } from "grammy";
 import { config } from "../lib/config.js";
-import { localDate } from "../lib/dates.js";
+import { ageOn, localDate, parseDate } from "../lib/dates.js";
 import * as db from "../db/index.js";
 import { parseManualLog } from "../services/ai.js";
 import * as coach from "../services/coach.js";
@@ -57,7 +57,7 @@ const HELP = `<b>Fuel Coach</b> — харчування під тріатлон
 /check — перевірити нові тренування зараз
 /recipes обід|перекус|вечеря — рецепти під план
 /week — тижневий звіт
-/profile зріст вік стать — напр. <code>/profile 180 36 m</code>
+/profile — показати профіль; змінити: <code>/profile 186 01.02.1987 m</code> (зріст, дата народження, стать)
 /likes текст — вподобання (напр. «люблю вівсянку, не їм свинину»)
 /allergies текст — алергії та виключення
 
@@ -85,22 +85,31 @@ bot.command("recipes", (ctx) => {
   return guard(() => coach.mealRecipes(config.chatId, name));
 });
 
+const profileText = async () => {
+  const p = await db.getProfile(config.chatId);
+  const age = ageOn(p.birthDate, localDate(new Date(), config.timezone));
+  const [y, m, d] = p.birthDate.split("-");
+  return `Профіль: зріст ${p.heightCm} см, народження ${d}.${m}.${y} (${age} р.), стать ${p.sex}\n` +
+    `Вподобання: ${p.preferences || "—"}\nАлергії: ${p.allergies || "немає"}`;
+};
+
 bot.command("profile", async (ctx) => {
-  const [h, a, s] = ctx.match.trim().split(/\s+/);
-  const heightCm = Number(h), age = Number(a);
-  if (!heightCm || !age || (s !== "m" && s !== "f")) {
-    const p = await db.getProfile(config.chatId);
-    return ctx.reply(`Поточний профіль: ${p.heightCm} см, ${p.age} р., ${p.sex}\nФормат: /profile 180 36 m`);
+  const [h, b, s] = ctx.match.trim().split(/\s+/);
+  const heightCm = Number(h);
+  const birthDate = b ? parseDate(b) : null;
+  if (!heightCm || heightCm < 120 || heightCm > 230 || !birthDate || (s !== "m" && s !== "f")) {
+    return ctx.reply(`${await profileText()}\n\nЗмінити: /profile 186 01.02.1987 m`);
   }
-  await db.updateProfile(config.chatId, { heightCm, age, sex: s });
-  return ctx.reply("✅ Профіль оновлено");
+  await db.updateProfile(config.chatId, { heightCm, birthDate, sex: s });
+  return ctx.reply(`✅ Оновлено\n${await profileText()}`);
 });
 bot.command("likes", async (ctx) => {
   await db.updateProfile(config.chatId, { preferences: ctx.match.trim() });
   return ctx.reply("✅ Вподобання збережено");
 });
 bot.command("allergies", async (ctx) => {
-  await db.updateProfile(config.chatId, { allergies: ctx.match.trim() });
+  const text = ctx.match.trim();
+  await db.updateProfile(config.chatId, { allergies: /^(немає|нема|ні|-|—)$/i.test(text) ? "" : text });
   return ctx.reply("✅ Збережено");
 });
 

@@ -4,13 +4,32 @@ import { dailyPlan, duringWorkoutCarbsPerHour, groupSessions, hydration, recover
 import { assessRecovery } from "../src/services/recovery.js";
 import { weightCorrectionKcal, weightTrend } from "../src/services/weight.js";
 import { mapActivity } from "../src/services/intervals.js";
+import { ageOn, parseDate } from "../src/lib/dates.js";
+import { bmr } from "../src/services/nutrition.js";
+
+describe("вік з дати народження", () => {
+  it("рахує повні роки з урахуванням дня народження", () => {
+    expect(ageOn("1987-02-01", "2026-11-16")).toBe(39);
+    expect(ageOn("1987-02-01", "2027-01-31")).toBe(39);
+    expect(ageOn("1987-02-01", "2027-02-01")).toBe(40);
+  });
+  it("BMR змінюється після дня народження", () => {
+    expect(bmr(profile, 75, "2027-02-01")).toBe(bmr(profile, 75, "2027-01-31") - 5);
+  });
+  it("парсить дати", () => {
+    expect(parseDate("01.02.1987")).toBe("1987-02-01");
+    expect(parseDate("1.2.1987")).toBe("1987-02-01");
+    expect(parseDate("1987-02-01")).toBe("1987-02-01");
+    expect(parseDate("31.02.1987")).toBeNull();
+  });
+});
 
 const w = (o: Partial<Workout>): Workout => ({
   id: "1", name: "x", sport: "run", start: new Date("2026-11-16T06:00:00Z"), durationMin: 60,
   load: 60, intensity: 0.75, kcal: null, kj: null, distanceKm: null, avgHr: null, ...o,
 });
 const good: RecoveryStatus = { level: "good", reasons: [], hrv: null, hrvBaseline: null, restingHr: null, restingHrBaseline: null, sleepHours: null, tsb: null };
-const profile: Profile = { chatId: 1, heightCm: 180, age: 36, sex: "m", preferences: "", allergies: "" };
+const profile: Profile = { chatId: 1, heightCm: 186, birthDate: "1987-02-01", sex: "m", preferences: "", allergies: "" };
 const day = (date: string, o: Partial<WellnessDay> = {}): WellnessDay => ({
   date, weightKg: null, bodyFatPct: null, musclePct: null, waterPct: null, bmi: null, restingHr: null, hrv: null, sleepHours: null, sleepScore: null, ctl: null, atl: null, ...o,
 });
