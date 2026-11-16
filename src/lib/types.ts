@@ -26,6 +26,10 @@ export interface WellnessDay {
   restingHr: number | null;
   hrv: number | null;
   sleepHours: number | null;
+  sleepScore: number | null;
+  /** Фітнес (CTL) і втома (ATL) з intervals.icu; форма TSB = ctl - atl */
+  ctl: number | null;
+  atl: number | null;
 }
 
 export interface Profile {
@@ -63,6 +67,7 @@ export interface RecoveryStatus {
   restingHr: number | null;
   restingHrBaseline: number | null;
   sleepHours: number | null;
+  tsb: number | null;
 }
 
 export interface WeightTrend {

@@ -2,8 +2,15 @@ import type { Sport, WellnessDay, Workout } from "../lib/types.js";
 
 const BASE = "https://intervals.icu/api/v1";
 
+export interface ActivityStub {
+  id: string;
+  startLocal: string;
+  source: string;
+}
+
 interface RawActivity {
   id: string | number;
+  source?: string;
   name?: string;
   type?: string;
   start_date?: string;
@@ -23,11 +30,14 @@ interface RawWellness {
   weight?: number | null;
   bodyFat?: number | null;
   muscleMass?: number | null;
-  hydration?: number | null;
   bmi?: number | null;
   restingHR?: number | null;
   hrv?: number | null;
   sleepSecs?: number | null;
+  sleepScore?: number | null;
+  bodyWater?: number | null;
+  ctl?: number | null;
+  atl?: number | null;
   [k: string]: unknown;
 }
 
@@ -70,11 +80,15 @@ export function mapWellness(w: RawWellness, weightKg: number | null = null): Wel
     bodyFatPct: num(w.bodyFat),
     // Garmin Index віддає м'язову масу в кг; переводимо у % для зручності
     musclePct: muscle != null && weight ? Math.round((muscle / weight) * 1000) / 10 : null,
-    waterPct: num(w.hydration),
+    // % води Garmin Index не передає в intervals.icu (поле hydration там — суб'єктивна оцінка)
+    waterPct: num(w.bodyWater),
     bmi: num(w.bmi),
     restingHr: num(w.restingHR),
     hrv: num(w.hrv),
     sleepHours: num(w.sleepSecs) != null ? (w.sleepSecs as number) / 3600 : null,
+    sleepScore: num(w.sleepScore),
+    ctl: num(w.ctl),
+    atl: num(w.atl),
   };
 }
 
@@ -89,8 +103,20 @@ export class IntervalsClient {
   }
 
   async activities(oldest: string, newest: string): Promise<Workout[]> {
+    return (await this.activitiesWithStubs(oldest, newest)).workouts;
+  }
+
+  /**
+   * Активності, імпортовані зі Strava, intervals.icu віддає лише як заглушки (без типу й тривалості) —
+   * це обмеження Strava API. Повертаємо їх окремо, щоб попередити користувача.
+   */
+  async activitiesWithStubs(oldest: string, newest: string): Promise<{ workouts: Workout[]; stubs: ActivityStub[] }> {
     const raw = await this.get<RawActivity[]>(`/athlete/${this.athleteId}/activities?oldest=${oldest}&newest=${newest}`);
-    return raw.filter((a) => (a.moving_time ?? a.elapsed_time ?? 0) > 0).map(mapActivity);
+    const isStub = (a: RawActivity) => !a.type || !((a.moving_time ?? a.elapsed_time ?? 0) > 0);
+    return {
+      workouts: raw.filter((a) => !isStub(a)).map(mapActivity),
+      stubs: raw.filter(isStub).map((a) => ({ id: String(a.id), startLocal: a.start_date_local ?? "", source: a.source ?? "" })),
+    };
   }
 
   async wellness(oldest: string, newest: string): Promise<WellnessDay[]> {

@@ -9,7 +9,7 @@ function req(name: string): string {
 export const config = {
   telegramToken: req("TELEGRAM_BOT_TOKEN"),
   /** Дозволений Telegram chat id власника (MVP — один спортсмен) */
-  chatId: Number(req("TELEGRAM_CHAT_ID")),
+  chatId: Number(process.env.TELEGRAM_CHAT_ID ?? 0),
   intervalsAthleteId: req("INTERVALS_ATHLETE_ID"),
   intervalsApiKey: req("INTERVALS_API_KEY"),
   databaseUrl: req("DATABASE_URL"),

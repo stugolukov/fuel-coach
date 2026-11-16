@@ -9,10 +9,10 @@ const w = (o: Partial<Workout>): Workout => ({
   id: "1", name: "x", sport: "run", start: new Date("2026-11-16T06:00:00Z"), durationMin: 60,
   load: 60, intensity: 0.75, kcal: null, kj: null, distanceKm: null, avgHr: null, ...o,
 });
-const good: RecoveryStatus = { level: "good", reasons: [], hrv: null, hrvBaseline: null, restingHr: null, restingHrBaseline: null, sleepHours: null };
+const good: RecoveryStatus = { level: "good", reasons: [], hrv: null, hrvBaseline: null, restingHr: null, restingHrBaseline: null, sleepHours: null, tsb: null };
 const profile: Profile = { chatId: 1, heightCm: 180, age: 36, sex: "m", preferences: "", allergies: "" };
 const day = (date: string, o: Partial<WellnessDay> = {}): WellnessDay => ({
-  date, weightKg: null, bodyFatPct: null, musclePct: null, waterPct: null, bmi: null, restingHr: null, hrv: null, sleepHours: null, ...o,
+  date, weightKg: null, bodyFatPct: null, musclePct: null, waterPct: null, bmi: null, restingHr: null, hrv: null, sleepHours: null, sleepScore: null, ctl: null, atl: null, ...o,
 });
 
 describe("groupSessions", () => {
@@ -32,6 +32,8 @@ describe("workoutKcal", () => {
   it("для велосипеда бере кДж", () => expect(workoutKcal(w({ sport: "bike", kj: 850, kcal: 1000 }), 70)).toBe(850));
   it("інакше калорії з годинника", () => expect(workoutKcal(w({ kcal: 700 }), 70)).toBe(700));
   it("фолбек на MET", () => expect(workoutKcal(w({ durationMin: 60, intensity: 0.75 }), 70)).toBe(700));
+  it("обмежує завищені калорії плавання", () =>
+    expect(workoutKcal(w({ sport: "swim", durationMin: 41, intensity: 0.67, kcal: 694 }), 75)).toBeLessThan(500));
 });
 
 describe("recoveryBreakfast", () => {
@@ -51,7 +53,8 @@ describe("dailyPlan", () => {
   it("вуглеводи масштабуються з навантаженням", () => {
     const rest = dailyPlan({ profile, weightKg: 70, sessions: [], recovery: good, trend: { current: 70, trend: 70, weeklyChange: 0 }, logs: [], breakfast: null });
     const hard = dailyPlan({ profile, weightKg: 70, sessions: [summarize([w({ load: 180, durationMin: 180, kcal: 2000 })], 70)], recovery: good, trend: { current: 70, trend: 70, weeklyChange: 0 }, logs: [], breakfast: null });
-    expect(rest.target.carbsG).toBe(210);
+    expect(rest.target.carbsG).toBeGreaterThanOrEqual(210);
+    expect(rest.target.fatG).toBeLessThanOrEqual(Math.round(1.3 * 70));
     expect(hard.target.carbsG).toBeGreaterThan(400);
     expect(hard.target.proteinG).toBe(125);
   });
@@ -86,6 +89,11 @@ describe("recovery", () => {
     expect(assessRecovery(day("2026-11-15", { hrv: 61, sleepHours: 8, restingHr: 47 }), hist).level).toBe("good");
   });
   it("без даних = unknown", () => expect(assessRecovery(undefined, []).level).toBe("unknown"));
+  it("велика накопичена втома (TSB < -25) знижує оцінку", () => {
+    const r = assessRecovery(day("2026-11-15", { hrv: 61, sleepHours: 8, restingHr: 47, ctl: 70, atl: 100 }), hist);
+    expect(r.level).toBe("ok");
+    expect(r.tsb).toBe(-30);
+  });
 });
 
 describe("misc", () => {
@@ -96,6 +104,17 @@ describe("misc", () => {
   });
   it("гідратація з електролітами для довгих сесій", () => {
     expect(hydration(summarize([w({ durationMin: 120 })], 70)).electrolytes).toBe(true);
+  });
+  it("Strava-заглушки не стають тренуваннями", async () => {
+    const { IntervalsClient } = await import("../src/services/intervals.js");
+    const c = new IntervalsClient("i1", "k");
+    (c as unknown as { get: () => Promise<unknown> }).get = async () => [
+      { id: "209", source: "STRAVA", start_date_local: "2026-11-15T07:42:03" },
+      { id: "i1", type: "Run", start_date: "2026-11-15T05:00:00Z", moving_time: 1800, source: "GARMIN_CONNECT" },
+    ];
+    const r = await c.activitiesWithStubs("2026-11-15", "2026-11-15");
+    expect(r.workouts.map((x) => x.id)).toEqual(["i1"]);
+    expect(r.stubs).toEqual([{ id: "209", startLocal: "2026-11-15T07:42:03", source: "STRAVA" }]);
   });
   it("мапінг активності intervals.icu", () => {
     const a = mapActivity({ id: 5, type: "VirtualRide", start_date: "2026-11-16T05:00:00Z", moving_time: 3600, icu_training_load: 70, icu_intensity: 78.5, icu_joules: 720000 });

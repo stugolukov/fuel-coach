@@ -12,14 +12,25 @@ async function run(name: string, fn: () => Promise<void>): Promise<void> {
 }
 
 export function startScheduler(): void {
+  if (!id) {
+    console.warn("TELEGRAM_CHAT_ID не задано — розклад вимкнено. Напишіть боту /start, щоб дізнатися chat id.");
+    return;
+  }
   // Нові тренування: кожні 10 хв з 05:00 до 21:59
   cron.schedule("*/10 5-21 * * *", () => run("workouts", async () => {
     const msg = await coach.checkNewWorkouts(id);
     if (msg) await send(msg, mealKeyboard());
   }), { timezone: tz });
 
-  // Ранковий звіт після синхронізації Garmin (вага, HRV, сон)
-  cron.schedule("15 8 * * *", () => run("morning", async () => send(await coach.morningReport(id))), { timezone: tz });
+  // Ранковий звіт — щойно Garmin синхронізував сон/HRV (05:00–09:59), інакше примусово о 10:00
+  cron.schedule("*/10 5-9 * * *", () => run("morning", async () => {
+    const msg = await coach.morningReport(id);
+    if (msg) await send(msg);
+  }), { timezone: tz });
+  cron.schedule("0 10 * * *", () => run("morning-fallback", async () => {
+    const msg = await coach.morningReport(id, new Date(), true);
+    if (msg) await send(msg);
+  }), { timezone: tz });
 
   // Немає тренувань до 13:00 — день відпочинку
   cron.schedule("0 13 * * *", () => run("rest", async () => {

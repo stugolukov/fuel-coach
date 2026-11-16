@@ -32,7 +32,11 @@ export const mealKeyboard = () =>
 // Доступ лише власнику
 bot.use(async (ctx, next) => {
   if (ctx.chat?.id !== config.chatId) {
-    if (ctx.chat) await ctx.reply(`Бот приватний. Ваш chat id: ${ctx.chat.id}`);
+    if (ctx.chat) {
+      await ctx.reply(config.chatId
+        ? "Це приватний бот."
+        : `Ваш chat id: ${ctx.chat.id}\nДодайте його в змінну TELEGRAM_CHAT_ID на Railway і перезапустіть сервіс.`);
+    }
     return;
   }
   await next();
@@ -49,6 +53,7 @@ const HELP = `<b>Fuel Coach</b> — харчування під тріатлон
 
 Команди:
 /today — стан і план на сьогодні
+/morning — ранковий звіт (якщо ще не приходив)
 /check — перевірити нові тренування зараз
 /recipes обід|перекус|вечеря — рецепти під план
 /week — тижневий звіт
@@ -70,6 +75,7 @@ const guard = async (fn: () => Promise<string | null>, empty = "Нічого н�
   }
 };
 
+bot.command("morning", () => guard(() => coach.morningReport(config.chatId, new Date(), true), "Ранковий звіт уже надсилався сьогодні. /today — поточний стан."));
 bot.command("today", () => guard(() => coach.todayStatus(config.chatId)));
 bot.command("check", () => guard(() => coach.checkNewWorkouts(config.chatId), "Нових тренувань немає."));
 bot.command("week", () => guard(() => coach.weeklyReport(config.chatId)));

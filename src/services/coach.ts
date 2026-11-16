@@ -12,6 +12,13 @@ import {
 import { assessRecovery } from "./recovery.js";
 import { weightTrend } from "./weight.js";
 
+/** Різниця між локальним часом і UTC для дати (мс) */
+function tzOffsetMs(d: Date): number {
+  const local = new Date(d.toLocaleString("en-US", { timeZone: config.timezone }));
+  const utc = new Date(d.toLocaleString("en-US", { timeZone: "UTC" }));
+  return local.getTime() - utc.getTime();
+}
+
 const intervals = new IntervalsClient(config.intervalsAthleteId, config.intervalsApiKey);
 const DEFAULT_WEIGHT = 70;
 
@@ -40,9 +47,23 @@ async function context(now = new Date()): Promise<Context> {
  */
 export async function checkNewWorkouts(chatId: number, now = new Date()): Promise<string | null> {
   const ctx = await context(now);
-  const workouts = await intervals.activities(ctx.today, ctx.today);
-  if (!workouts.length) return null;
+  const { workouts, stubs } = await intervals.activitiesWithStubs(ctx.today, ctx.today);
   const seen = await db.processedIds(chatId, ctx.today);
+
+  const freshStubs = stubs.filter((s) => !seen.has(s.id));
+  if (freshStubs.length) {
+    await db.markProcessed(chatId, ctx.today, freshStubs.map((s) => s.id));
+    // Якщо цю ж активність Garmin теж передав — нічого не кажемо
+    const covered = (s: (typeof stubs)[number]) =>
+      workouts.some((w) => Math.abs(w.start.getTime() - Date.parse(`${s.startLocal}Z`) + tzOffsetMs(w.start)) < 10 * 60_000);
+    const unknown = freshStubs.filter((s) => !covered(s));
+    if (unknown.length && !workouts.some((w) => !seen.has(w.id))) {
+      return `⚠️ Є тренування о ${unknown.map((s) => s.startLocal.slice(11, 16)).join(", ")} (${unknown[0]!.source}), але intervals.icu не передає його дані: це обмеження Strava API.\n` +
+        "Щоб бот бачив усі тренування, увімкніть пряму синхронізацію Garmin Connect → intervals.icu (Settings → Connections).";
+    }
+  }
+
+  if (!workouts.length) return null;
   const fresh = workouts.filter((w) => !seen.has(w.id));
   if (!fresh.length) return null;
 
@@ -86,15 +107,26 @@ async function buildBreakfastMessage(chatId: number, ctx: Context, all: Workout[
   return parts.join("\n\n");
 }
 
-/** Ранковий звіт: вага, склад тіла, відновлення. */
-export async function morningReport(chatId: number, now = new Date()): Promise<string> {
+/**
+ * Ранковий звіт: вага, склад тіла, відновлення. Надсилається, щойно Garmin синхронізував
+ * сон/HRV за сьогодні (або примусово з `force`). Повертає null, якщо ще рано або вже надіслано.
+ */
+export async function morningReport(chatId: number, now = new Date(), force = false): Promise<string | null> {
   const ctx = await context(now);
+  if (await db.hasRecommendation(chatId, ctx.today, "morning")) return null;
+  const synced = ctx.wellnessToday?.hrv != null || ctx.wellnessToday?.sleepHours != null;
+  if (!synced && !force) return null;
+  await db.saveRecommendation(chatId, ctx.today, "morning", { recovery: ctx.recovery });
+  const profile = await db.getProfile(chatId);
   const trend = weightTrend(ctx.history);
-  const parts = [`☀️ <b>Доброго ранку!</b>`, fmt.body(ctx.wellnessToday, trend), fmt.recovery(ctx.recovery)];
+  const parts = [`☀️ <b>Доброго ранку!</b>`, fmt.body(ctx.wellnessToday, trend, profile.heightCm), fmt.recovery(ctx.recovery)];
   const recent = ctx.history.slice(-7).map((d, i, arr) => assessRecovery(d, ctx.history.slice(0, ctx.history.length - arr.length + i)));
   const reds = redsWarning(trend, recent);
   if (reds) parts.push(reds);
-  parts.push(`🍌 <b>Перед тренуванням:</b>\n${preWorkout({ expectedLong: false, recovery: ctx.recovery }).join("\n")}`);
+  const trainedAlready = (await intervals.activities(ctx.today, ctx.today)).length > 0;
+  if (!trainedAlready) {
+    parts.push(`🍌 <b>Перед тренуванням:</b>\n${preWorkout({ expectedLong: false, recovery: ctx.recovery }).join("\n")}`);
+  }
   return parts.join("\n\n");
 }
 
@@ -161,7 +193,7 @@ export async function weeklyReport(chatId: number, now = new Date()): Promise<st
   return [
     `📅 <b>Тиждень ${from} — ${ctx.today}</b>`,
     `⏱ ${summary.trainingHours} год · load ${summary.totalLoad}\n${sportLines.join("\n")}`,
-    fmt.body(ctx.wellnessToday, trend),
+    fmt.body(ctx.wellnessToday, trend, (await db.getProfile(chatId)).heightCm),
     `HRV сер. ${summary.avgHrv ?? "—"} · сон сер. ${summary.avgSleep ?? "—"} год`,
     `🍷 Днів з алкоголем: ${summary.alcoholDays} · 🍰 з десертами: ${summary.dessertDays} (+${summary.extraKcal} ккал)`,
     fmt.esc(narrative),
@@ -179,7 +211,7 @@ export async function todayStatus(chatId: number, now = new Date()): Promise<str
   const firstBreakfast = sessions[0] ? recoveryBreakfast(sessions[0], ctx.weightKg, ctx.recovery) : null;
   const plan = dailyPlan({ profile, weightKg: ctx.weightKg, sessions, recovery: ctx.recovery, trend, logs, breakfast: firstBreakfast });
   return [
-    fmt.body(ctx.wellnessToday, trend),
+    fmt.body(ctx.wellnessToday, trend, profile.heightCm),
     fmt.recovery(ctx.recovery),
     sessions.length ? sessions.map(fmt.session).join("\n\n") : "Сьогодні тренувань ще немає.",
     firstBreakfast ? `🍳 Сніданок: ${fmt.macros(firstBreakfast)}` : "",

@@ -1,8 +1,18 @@
+import { readFileSync } from "node:fs";
 import pg from "pg";
 import { config } from "../lib/config.js";
 import type { ManualLog, Profile } from "../lib/types.js";
 
-export const pool = new pg.Pool({ connectionString: config.databaseUrl });
+export const pool = new pg.Pool({
+  connectionString: config.databaseUrl,
+  // Публічний URL Railway Postgres (postgres-ssl) використовує самопідписаний сертифікат
+  ssl: process.env.DATABASE_SSL === "true" ? { rejectUnauthorized: false } : undefined,
+});
+
+export async function migrate(): Promise<void> {
+  const sql = readFileSync(new URL("../../src/db/schema.sql", import.meta.url), "utf8");
+  await pool.query(sql);
+}
 
 export async function getProfile(chatId: number): Promise<Profile> {
   await pool.query("INSERT INTO profiles(chat_id) VALUES ($1) ON CONFLICT DO NOTHING", [chatId]);

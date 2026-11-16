@@ -26,21 +26,24 @@ export function recovery(r: RecoveryStatus): string {
   if (r.hrv != null) parts.push(`HRV ${r.hrv}${r.hrvBaseline ? ` (норма ${r.hrvBaseline.toFixed(0)})` : ""}`);
   if (r.restingHr != null) parts.push(`RHR ${r.restingHr}`);
   if (r.sleepHours != null) parts.push(`сон ${r.sleepHours.toFixed(1)} год`);
+  if (r.tsb != null) parts.push(`форма ${r.tsb >= 0 ? "+" : ""}${r.tsb.toFixed(0)}`);
   let out = `${icon} Відновлення: <b>${label}</b>${parts.length ? `\n${parts.join(" · ")}` : ""}`;
   if (r.reasons.length) out += `\n${r.reasons.map((x) => `• ${esc(x)}`).join("\n")}`;
   return out;
 }
 
-export function body(w: WellnessDay | undefined, t: WeightTrend): string {
+export function body(w: WellnessDay | undefined, t: WeightTrend, heightCm?: number): string {
   if (!w?.weightKg && t.current == null) return "⚖️ Немає даних зважування";
-  const parts = [`⚖️ ${w?.weightKg ?? t.current} кг`];
+  const kg = w?.weightKg ?? t.current!;
+  const parts = [`⚖️ ${kg} кг${w?.weightKg == null ? " (останнє зважування)" : ""}`];
   if (t.trend != null) parts.push(`тренд ${t.trend.toFixed(1)}`);
   if (t.weeklyChange != null) parts.push(`${t.weeklyChange >= 0 ? "+" : ""}${t.weeklyChange.toFixed(2)} кг/тижд`);
   const comp: string[] = [];
   if (w?.bodyFatPct != null) comp.push(`жир ${w.bodyFatPct}%`);
   if (w?.musclePct != null) comp.push(`м'язи ${w.musclePct}%`);
   if (w?.waterPct != null) comp.push(`вода ${w.waterPct}%`);
-  if (w?.bmi != null) comp.push(`ІМТ ${w.bmi}`);
+  const bmi = w?.bmi ?? (heightCm ? Math.round((kg / (heightCm / 100) ** 2) * 10) / 10 : null);
+  if (bmi != null) comp.push(`ІМТ ${bmi}`);
   return parts.join(" · ") + (comp.length ? `\n${comp.join(" · ")}` : "");
 }
 

@@ -53,6 +53,17 @@ export function assessRecovery(today: WellnessDay | undefined, history: Wellness
     }
   }
 
+  if (today?.sleepScore != null && today.sleepScore < 60) {
+    penalty += 1;
+    reasons.push(`Низька якість сну (score ${today.sleepScore})`);
+  }
+
+  const tsb = today?.ctl != null && today.atl != null ? today.ctl - today.atl : null;
+  if (tsb != null && tsb < -25) {
+    penalty += 1;
+    reasons.push(`Накопичена втома: форма (TSB) ${tsb.toFixed(0)}`);
+  }
+
   const level = signals === 0 ? "unknown" : penalty >= 3 ? "poor" : penalty >= 1 ? "ok" : "good";
   return {
     level,
@@ -62,5 +73,6 @@ export function assessRecovery(today: WellnessDay | undefined, history: Wellness
     restingHr: today?.restingHr ?? null,
     restingHrBaseline: rhrBaseline,
     sleepHours: today?.sleepHours ?? null,
+    tsb,
   };
 }

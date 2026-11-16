@@ -9,9 +9,14 @@ const MET: Record<Workout["sport"], number> = { swim: 8, bike: 8, run: 10, stren
 export function workoutKcal(w: Workout, weightKg: number): number {
   // Для велосипеда з потужоміром кДж механічної роботи ≈ ккал витрат (ефективність ~24%)
   if (w.sport === "bike" && w.kj != null && w.kj > 0) return Math.round(w.kj);
-  if (w.kcal != null && w.kcal > 0) return Math.round(w.kcal);
   const intensityAdj = w.intensity != null ? Math.max(0.7, Math.min(1.3, w.intensity / 0.75)) : 1;
-  return Math.round(MET[w.sport] * intensityAdj * weightKg * (w.durationMin / 60));
+  const estimate = MET[w.sport] * intensityAdj * weightKg * (w.durationMin / 60);
+  if (w.kcal != null && w.kcal > 0) {
+    // Годинники помітно завищують калорії плавання (і подекуди інших видів) — обмежуємо реалістичним максимумом
+    const cap = estimate * (w.sport === "swim" ? 1.25 : 1.5);
+    return Math.round(Math.min(w.kcal, cap));
+  }
+  return Math.round(estimate);
 }
 
 /**
@@ -123,13 +128,13 @@ export function dailyPlan(args: {
     notes.push(`Алкоголь (~${Math.round(alcoholG)} г етанолу) гальмує синтез глікогену та білка і знижує HRV вночі. Додатково 500 мл води з електролітами, не пити за 3 год до сну.`);
   }
 
-  let carbsG = carbPerKg * weightKg;
+  // Вуглеводи за навантаженням — це мінімум ("fuel for the work required").
+  // Жири 0.8–1.3 г/кг; решта енергії йде у вуглеводи, а не в жири.
+  const carbFloor = carbPerKg * weightKg;
   const proteinG = proteinPerKg * weightKg;
-  const fatMin = 0.8 * weightKg;
-  let fatG = Math.max(fatMin, (kcal - carbsG * 4 - proteinG * 4) / 9);
-  // Якщо після компенсації енергії бракує — зменшуємо вуглеводи, але не нижче 3 г/кг
-  const total = carbsG * 4 + proteinG * 4 + fatG * 9;
-  if (total > kcal) carbsG = Math.max(3 * weightKg, (kcal - proteinG * 4 - fatG * 9) / 4);
+  const fatG = Math.min(1.3 * weightKg, Math.max(0.8 * weightKg, (kcal - carbFloor * 4 - proteinG * 4) / 9));
+  // Якщо енергії бракує (корекція ваги) — вуглеводи зменшуються, але не нижче 3 г/кг
+  const carbsG = Math.max(3 * weightKg, (kcal - proteinG * 4 - fatG * 9) / 4);
 
   const target: Macros = {
     carbsG: r5(carbsG),
